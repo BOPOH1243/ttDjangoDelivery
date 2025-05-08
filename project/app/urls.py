@@ -1,9 +1,8 @@
-# urls.py
+# app/urls.py
 from django.urls import path
-from . import views
+from .views import DeliveryReportView, DeliveryListAPIView
 
 urlpatterns = [
-    path('report/', views.report_view, name='report'),
-    path('chart-data/', views.chart_data, name='chart_data'),
-    path('deliveries-data/', views.deliveries_data, name='deliveries_data'),
+    path('', DeliveryReportView.as_view(), name='delivery_report'),             # Страница отчёта
+    path('api/deliveries/', DeliveryListAPIView.as_view(), name='delivery_list'),  # API для фильтрации
 ]

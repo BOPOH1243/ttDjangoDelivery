@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Обновление таблицы и графика
     function updateData() {
       const params = getFilterParams();
-      fetch(`/reports/api/deliveries/?${params}`, { credentials: 'same-origin' })
+      fetch(`/reports/api/deliveries/filter/?${params}`, { credentials: 'same-origin' })
         .then(response => response.json())
         .then(data => {
           // Обновляем таблицу

@@ -1,189 +1,330 @@
-//screens/DeliveryFormScreen.js
-import React, { useState, useEffect } from 'react'
-import {
-  View, ScrollView, Text, TextInput, Button, TouchableOpacity, Platform
-} from 'react-native'
-import DateTimePicker from '@react-native-community/datetimepicker'
-import * as DocumentPicker from 'expo-document-picker';
-import api from '../api/client'
-import { Picker } from '@react-native-picker/picker'
-import { styles } from '../utils/theme'
+import React, { useEffect, useState } from 'react';
+import { View, Text, TextInput, Button, ScrollView, Alert, StyleSheet, TouchableOpacity, Platform, Modal } from 'react-native';
+import { FAB, useTheme, } from 'react-native-paper';
+import { Picker } from '@react-native-picker/picker';
+import DateTimePicker from 'react-datetime-picker';
+//import {DateTimePickerModal as DateTimePicker} from "react-native-modal-datetime-picker";
+import api from '../api/axios';
+import FilePicker from '../elements/FilePicker.web';
 
-export default function DeliveryFormScreen({ navigation }) {
-  // Справочники
-  const [models, setModels] = useState([])
-  const [packings, setPackings] = useState([])
-  const [services, setServices] = useState([])
-  const [statuses, setStatuses] = useState([])
-  const [cargoTypes, setCargoTypes] = useState([])
+export default function DeliveryFormScreen({ route, navigation }) {
+  const editing = route.params?.delivery;
+  const theme = useTheme();
 
-  // Поля формы
-  const [transportModel, setTransportModel] = useState(null)
-  const [transportNumber, setTransportNumber] = useState('')
-  const [departureTime, setDepartureTime] = useState(new Date())
-  const [arrivalTime, setArrivalTime] = useState(new Date())
-  const [showDepPicker, setShowDepPicker] = useState(false)
-  const [showArrPicker, setShowArrPicker] = useState(false)
-  const [distanceKm, setDistanceKm] = useState('')
-  const [selectedServices, setSelectedServices] = useState([])
-  const [packaging, setPackaging] = useState(null)
-  const [status, setStatus] = useState(null)
-  const [cargoType, setCargoType] = useState(null)
-  const [mediaFile, setMediaFile] = useState(null)
+  const [transportModel, setTransportModel] = useState(editing?.transport_model || '');
+  const [transportNumber, setTransportNumber] = useState(editing?.transport_number || '');
+  const [departureTime, setDepartureTime] = useState(new Date(editing?.departure_time || Date.now()));
+  const [arrivalTime, setArrivalTime] = useState(new Date(editing?.arrival_time || Date.now()));
+  const [distanceKm, setDistanceKm] = useState(editing?.distance_km?.toString() || '');
+  const [packaging, setPackaging] = useState(editing?.packaging || '');
+  const [status, setStatus] = useState(editing?.status || '');
+  const [cargoType, setCargoType] = useState(editing?.cargo_type || '');
+  const [technicalState, setTechnicalState] = useState(editing?.technical_state || 'good');
+  const [servicesSelected, setServicesSelected] = useState(editing?.services || []);
 
-  // Загрузка справочников
+  const [showDepPicker, setShowDepPicker] = useState(false);
+  const [showArrPicker, setShowArrPicker] = useState(false);
+
+  const [transportModels, setTransportModels] = useState([]);
+  const [packagings, setPackagings] = useState([]);
+  const [statuses, setStatuses] = useState([]);
+  const [cargoTypes, setCargoTypes] = useState([]);
+  const [services, setServices] = useState([]);
+
+  const [selectedFile, setSelectedFile] = useState(null);
+
   useEffect(() => {
-    const loadRefs = async () => {
-      const [m, p, s, st, c] = await Promise.all([
-        api.get('/api/transport-models/'),
-        api.get('/api/packagings/'),
-        api.get('/api/services/'),
-        api.get('/api/statuses/'),
-        api.get('/api/cargo-types/'),
-      ])
-      setModels(m.data)
-      setPackings(p.data)
-      setServices(s.data)
-      setStatuses(st.data)
-      setCargoTypes(c.data)
+    const fetchData = async () => {
+      try {
+        const [tmRes, pkgRes, stRes, ctRes, srvRes] = await Promise.all([
+          api.get('/transport-models/'),
+          api.get('/packagings/'),
+          api.get('/statuses/'),
+          api.get('/cargo-types/'),
+          api.get('/services/'),
+        ]);
+        setTransportModels(tmRes.data);
+        setPackagings(pkgRes.data);
+        setStatuses(stRes.data);
+        setCargoTypes(ctRes.data);
+        setServices(srvRes.data);
+      } catch (error) {
+        Alert.alert('Ошибка', 'Не удалось загрузить данные для формы.');
+      }
+    };
+    fetchData();
+  }, []);
+
+  const handleSave = async () => {
+    // Проверка обязательных полей
+    if (!transportModel || !transportNumber || !departureTime || !arrivalTime || !distanceKm || !packaging || !status) {
+      Alert.alert('Ошибка', 'Пожалуйста, заполните все обязательные поля.');
+      return;
     }
-    loadRefs()
-  }, [])
-
-  // Файловый селектор
-  const pickFile = async () => {
-    const res = await DocumentPicker.pickSingle({ type: [DocumentPicker.types.allFiles] })
-    setMediaFile(res)
-  }
-
-  // Отправка формы
-  const createDelivery = async () => {
-    const form = new FormData()
-    form.append('transport_model', transportModel)
-    form.append('transport_number', transportNumber)
-    form.append('departure_time', departureTime.toISOString())
-    form.append('arrival_time', arrivalTime.toISOString())
-    form.append('distance_km', distanceKm)
-    selectedServices.forEach(id => form.append('services', id))
-    form.append('packaging', packaging)
-    form.append('status', status)
-    if (cargoType) form.append('cargo_type', cargoType)
-    form.append('technical_state', 'good') // или 'bad'
-    if (mediaFile) {
-      form.append('media_file', {
-        uri: mediaFile.uri,
-        type: mediaFile.type,
-        name: mediaFile.name
-      })
+  
+    // Создаем FormData
+    const formData = new FormData();
+    formData.append('transport_model', transportModel);
+    formData.append('transport_number', transportNumber);
+    formData.append('departure_time', departureTime.toISOString());
+    formData.append('arrival_time', arrivalTime.toISOString());
+    formData.append('distance_km', distanceKm);
+    formData.append('packaging', packaging);
+    formData.append('status', status);
+    if (cargoType) formData.append('cargo_type', cargoType);
+    formData.append('technical_state', technicalState);
+    servicesSelected.forEach(id => formData.append('services', id.toString()));
+  
+    // Если файл выбран, добавляем его
+    if (selectedFile) {
+      // Для React Native (Android/iOS) DocumentPicker:
+      if (Platform.OS !== 'web') {
+        // selectedFile: { uri, name, type }
+        formData.append('media_file', {
+          uri: selectedFile.uri,
+          name: selectedFile.name,
+          type: selectedFile.type || 'application/octet-stream',
+        });
+      } else {
+        // Для Web selectedFile — это JS File object
+        formData.append('media_file', selectedFile, selectedFile.name);
+      }
     }
-
+  
     try {
-      await api.post('/api/deliveries/', form, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
-      navigation.goBack()
-    } catch (err) {
-      console.error(err.response?.data || err)
+      const config = {
+        headers: {
+          //'Content-Type': 'multipart/form-data',
+        },
+      };
+  
+      if (editing) {
+        await api.put(`/deliveries/${editing.id}/`, formData, config);
+      } else {
+        await api.post('/deliveries/', formData, config);
+      }
+  
+      navigation.goBack();
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Ошибка', 'Не удалось сохранить доставку.');
     }
-  }
+  };
+  
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text>Модель транспорта</Text>
-      <Picker selectedValue={transportModel} onValueChange={setTransportModel}>
-        <Picker.Item label="— выберите —" value={null} />
-        {models.map(m => <Picker.Item key={m.id} label={m.name} value={m.id} />)}
+    <ScrollView contentContainerStyle={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <Text style={[styles.label, { color: theme.colors.onBackground }]}>Модель транспорта *</Text>
+      <Picker
+        selectedValue={transportModel}
+        onValueChange={setTransportModel}
+        style={[styles.picker, { backgroundColor: theme.colors.surface, color: theme.colors.outline }]}
+      >
+        <Picker.Item label="Выберите модель" value="" />
+        {transportModels.map((model) => (
+          <Picker.Item key={model.id} label={model.name} value={model.id} />
+        ))}
       </Picker>
 
-      <Text>Номер транспорта</Text>
-      <TextInput value={transportNumber} onChangeText={setTransportNumber} style={styles.input} />
+      <Text style={[styles.label, { color: theme.colors.onBackground }]}>Номер транспорта *</Text>
+      <TextInput
+        value={transportNumber}
+        onChangeText={setTransportNumber}
+        style={[styles.input, { borderColor: theme.colors.outline, color: theme.colors.onSurface }]}
+        placeholder="Введите номер"
+        placeholderTextColor={theme.colors.placeholder}
+      />
 
-      <Text>Время отправки</Text>
+      <Text style={[styles.label, { color: theme.colors.onBackground }]}>Время отправки *</Text>
       <TouchableOpacity onPress={() => setShowDepPicker(true)}>
-        <Text style={styles.input}>{departureTime.toLocaleString()}</Text>
+        <Text style={[styles.input, { color: theme.colors.outline }]}>{departureTime.toLocaleString()}</Text>
       </TouchableOpacity>
       {showDepPicker && (
-        <DateTimePicker
-          value={departureTime}
-          mode="datetime"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={(_, d) => {
-            setShowDepPicker(false)
-            if (d) setDepartureTime(d)
-          }}
-        />
+        <Modal transparent={true} animationType="slide">
+          <View style={{
+            flex: 1,
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0,0,0,0.5)'
+          }}>
+            <View style={{
+              backgroundColor: theme.colors.background,
+              padding: 20,
+              borderRadius: 10,
+              margin: 20
+            }}>
+              <DateTimePicker
+                value={departureTime}
+                mode="datetime"
+                display="spinner"
+                onChange={(_, date) => {
+                  setShowDepPicker(false);
+                  if (date) setDepartureTime(date);
+                }}
+                textColor={theme.dark ? 'white' : 'black'}
+              />
+              <TouchableOpacity
+                onPress={() => setShowDepPicker(false)}
+                style={{ padding: 10, alignItems: 'center' }}
+              >
+                <Text style={{ color: theme.colors.primary }}>Готово</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       )}
 
-      <Text>Время доставки</Text>
+      <Text style={[styles.label, { color: theme.colors.outline }]}>Время доставки *</Text>
       <TouchableOpacity onPress={() => setShowArrPicker(true)}>
-        <Text style={styles.input}>{arrivalTime.toLocaleString()}</Text>
+        <Text style={[styles.input, { color: theme.colors.primary }]}>{arrivalTime.toLocaleString()}</Text>
       </TouchableOpacity>
       {showArrPicker && (
-        <DateTimePicker
-          value={arrivalTime}
-          mode="datetime"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={(_, d) => {
-            setShowArrPicker(false)
-            if (d) setArrivalTime(d)
-          }}
-        />
+        <Modal transparent={true} animationType="slide">
+          <View style={{
+            flex: 1,
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0,0,0,0.5)'
+          }}>
+            <View style={{
+              backgroundColor: theme.colors.background,
+              padding: 20,
+              borderRadius: 10,
+              margin: 20
+            }}>
+              <DateTimePicker
+                value={departureTime}
+                mode="datetime"
+                display="spinner"
+                onChange={(_, date) => {
+                  setShowArrPicker(false);
+                  if (date) setArrivalTime(date);
+                }}
+                textColor={theme.dark ? 'white' : 'black'}
+              />
+              <TouchableOpacity
+                onPress={() => setShowArrPicker(false)}
+                style={{ padding: 10, alignItems: 'center' }}
+              >
+                <Text style={{ color: theme.colors.primary }}>Готово</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       )}
 
-      <Text>Дистанция (км)</Text>
+      <Text style={[styles.label, { color: theme.colors.onBackground }]}>Дистанция (км) *</Text>
       <TextInput
         value={distanceKm}
         onChangeText={setDistanceKm}
         keyboardType="numeric"
-        style={styles.input}
+        style={[styles.input, { borderColor: theme.colors.outline, color: theme.colors.onSurface }]}
+        placeholder="Введите дистанцию"
+        placeholderTextColor={theme.colors.placeholder}
       />
 
-      <Text>Услуги</Text>
-      {services.map(sv => (
-        <TouchableOpacity
-          key={sv.id}
-          onPress={() => {
-            const idx = selectedServices.indexOf(sv.id)
-            const next = idx >= 0
-              ? selectedServices.filter(x => x !== sv.id)
-              : [...selectedServices, sv.id]
-            setSelectedServices(next)
-          }}
-        >
-          <Text style={{
-            padding: 8,
-            backgroundColor: selectedServices.includes(sv.id) ? '#555' : '#222',
-            marginVertical: 4,
-          }}>
-            {sv.name}
-          </Text>
-        </TouchableOpacity>
+      <Text style={[styles.label, { color: theme.colors.onBackground }]}>Упаковка *</Text>
+      <Picker
+        selectedValue={packaging}
+        onValueChange={setPackaging}
+        style={[styles.picker, { backgroundColor: theme.colors.surface, color: theme.colors.outline }]}
+      >
+        <Picker.Item label="Выберите упаковку" value="" />
+        {packagings.map((pkg) => (
+          <Picker.Item key={pkg.id} label={pkg.name} value={pkg.id} />
+        ))}
+      </Picker>
+
+      <Text style={[styles.label, { color: theme.colors.onBackground }]}>Статус *</Text>
+      <Picker
+        selectedValue={status}
+        onValueChange={setStatus}
+        style={[styles.picker, { backgroundColor: theme.colors.surface, color: theme.colors.outline }]}
+      >
+        <Picker.Item label="Выберите статус" value="" />
+        {statuses.map((st) => (
+          <Picker.Item key={st.id} label={st.name} value={st.id} />
+        ))}
+      </Picker>
+
+      <Text style={[styles.label, { color: theme.colors.onBackground }]}>Тип груза</Text>
+      <Picker
+        selectedValue={cargoType}
+        onValueChange={setCargoType}
+        style={[styles.picker, { backgroundColor: theme.colors.surface, color: theme.colors.outline }]}
+      >
+        <Picker.Item label="Выберите тип груза" value="" />
+        {cargoTypes.map((ct) => (
+          <Picker.Item key={ct.id} label={ct.name} value={ct.id} />
+        ))}
+      </Picker>
+
+      <Text style={[styles.label, { color: theme.colors.onBackground }]}>Техническое состояние</Text>
+      <Picker
+        selectedValue={technicalState}
+        onValueChange={setTechnicalState}
+        style={[styles.picker, { backgroundColor: theme.colors.surface, color: theme.colors.outline }]}
+      >
+        <Picker.Item label="Исправно" value="good" />
+        <Picker.Item label="Неисправно" value="bad" />
+      </Picker>
+      <Text style={[styles.label, { color: theme.colors.onBackground }]}>Прикрепить файл</Text>
+      <FilePicker onFileSelected={setSelectedFile} />
+      {selectedFile && (
+        <Text style={{ marginTop: 8, color: theme.colors.primary }}>
+          Выбран файл: {selectedFile.name}
+        </Text>
+      )}
+
+      <Text style={[styles.label, { color: theme.colors.onBackground }]}>Услуги</Text>
+      {services.map((srv) => (
+        <View key={srv.id} style={styles.serviceRow}>
+          <Text style={{ color: theme.colors.onBackground, fontSize: 20 }}>{srv.name}</Text>
+          <FAB
+            mode="text"
+            icon={servicesSelected.includes(srv.id) ? 'minus' : 'plus'}
+            onPress={() => {
+              const updated = servicesSelected.includes(srv.id)
+                ? servicesSelected.filter((id) => id !== srv.id)
+                : [...servicesSelected, srv.id];
+              setServicesSelected(updated);
+            }}
+            labelStyle={{ color: theme.colors.primary }}
+          />
+        </View>
       ))}
 
-      <Text>Упаковка</Text>
-      <Picker selectedValue={packaging} onValueChange={setPackaging}>
-        <Picker.Item label="— выберите —" value={null} />
-        {packings.map(p => <Picker.Item key={p.id} label={p.name} value={p.id} />)}
-      </Picker>
-
-      <Text>Статус</Text>
-      <Picker selectedValue={status} onValueChange={setStatus}>
-        <Picker.Item label="— выберите —" value={null} />
-        {statuses.map(st => <Picker.Item key={st.id} label={st.name} value={st.id} />)}
-      </Picker>
-
-      <Text>Тип груза (необяз.)</Text>
-      <Picker selectedValue={cargoType} onValueChange={setCargoType}>
-        <Picker.Item label="— нет —" value={null} />
-        {cargoTypes.map(c => <Picker.Item key={c.id} label={c.name} value={c.id} />)}
-      </Picker>
-
-      <Button title="Выбрать файл" onPress={pickFile} />
-      {mediaFile && <Text>Файл: {mediaFile.name}</Text>}
-
-      <View style={{ marginTop: 20 }}>
-        <Button title="Создать доставку" onPress={createDelivery} />
-      </View>
+      <Button title={editing ? 'Обновить' : 'Создать'} onPress={handleSave} color={theme.colors.accent} />
     </ScrollView>
-  )
+  );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flexGrow: 1,
+    padding: 20,
+  },
+  label: {
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  input: {
+    height: 48,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginBottom: 16,
+    paddingHorizontal: 12,
+    textAlignVertical: 'center',
+  },
+  picker: {
+    height: 48,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginBottom: 16,
+    paddingHorizontal: 12,
+  },
+  serviceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+});

@@ -1,8 +1,11 @@
 version: "3.9"
+
 services:
   db:
     image: postgres:latest
     restart: always
+    env_file:
+      - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -12,5 +15,36 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  web:
+    build: .
+    restart: always
+    command: python project/manage.py runserver 0.0.0.0:8000
+    env_file:
+      - .env  
+    volumes:
+      - ./project:/app/project
+      - media_data:/app/project/media
+    environment:
+      DB_HOST: db
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+  frontend:
+    image: node:18
+    working_dir: /app
+    volumes:
+      - ./DeliveryApp:/app
+    command: sh -c "npm install && npx expo start --web"
+    ports:
+      - "8081:8081"
+    stdin_open: true
+    tty: true
+
 volumes:
   postgres_data:
+  media_data:

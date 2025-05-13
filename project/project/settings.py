@@ -88,17 +88,26 @@ WSGI_APPLICATION = 'project.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+#DATABASES = {
+#    'default': {
+#        'ENGINE': 'django.db.backends.postgresql',
+#        'NAME': 'mydatabase',       # Берем из переменных окружения
+#        'USER': 'myuser',      # Берем из переменных окружения
+#        'PASSWORD': 'mypassword',  # Берем из переменных окружения
+#        'HOST': 'localhost',  # Имя сервиса из docker-compose.yml
+#        'PORT': '5432',
+#    }
+#}
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'mydatabase',       # Берем из переменных окружения
-        'USER': 'myuser',      # Берем из переменных окружения
-        'PASSWORD': 'mypassword',  # Берем из переменных окружения
-        'HOST': 'localhost',  # Имя сервиса из docker-compose.yml
+        'NAME': os.getenv('POSTGRES_DB'),
+        'USER': os.getenv('POSTGRES_USER'),
+        'PASSWORD': os.getenv('POSTGRES_PASSWORD'),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': '5432',
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
